@@ -413,3 +413,33 @@ void NetworkReader::RegExceptionCallback(const std::function<void(const TWExcept
 {
 	m_funcException = callback;
 }
+
+bool NetworkReader::SendData(const char* ptr, int length)
+{
+	SocketT sendSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP); //
+
+	if (sendSocket == INVALID_SOCKET)
+	{
+		USE_EXCEPTION_ERROR(TWException::TWEC_ERROR_CREATE_SOCKET_SEND, std::string("Create send socket error!"));
+		return false;
+	}
+
+	SOCKADDR_IN sTargetAddr; 
+	socklen_t nSenderAddrSize = sizeof(sTargetAddr);
+	sTargetAddr.sin_family = AF_INET;
+	sTargetAddr.sin_port = htons(8082);
+#ifdef __linux__
+	//sTargetAddr.sin_addr.s_addr = inet_addr(m_lidarIP.data());
+	sTargetAddr.sin_addr.s_addr = inet_addr("10.0.0.253");
+#elif _WIN32
+	inet_pton(AF_INET, m_lidarIP.data(), &(sTargetAddr.sin_addr.s_addr));
+#endif
+	int retLen = sendto(sendSocket, ptr, length, 0, (struct sockaddr *) &sTargetAddr, sizeof(sTargetAddr));
+	if (retLen != length)
+	{
+		USE_EXCEPTION_ERROR(TWException::TWEC_ERROR_SOCKET_SEND_FAILED, std::string("Send data error!"));
+		return false;
+	}
+	else
+		return true;
+}

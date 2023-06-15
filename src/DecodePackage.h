@@ -95,6 +95,7 @@ public:
 	void RegPointCloudCallback(const std::function<void(typename TWPointCloud<PointT>::Ptr, bool)>& callback);
 	void RegGPSCallback(const std::function<void(const std::string&)>& callback);
 	void RegIMUDataCallback(const std::function<void(const TWIMUData&)>& callback);
+	void RegDeliveryCalibrateCallback(const std::function<void(const char* ptr, int length)>& callback);
 	void RegExceptionCallback(const std::function<void(const TWException&)>& callback);
 
 	void SetPackageCache(std::shared_ptr<PackageCache> packageCachePtr){ m_packageCachePtr = packageCachePtr; }
@@ -108,7 +109,7 @@ public:
 private:
 	void InitBasicVariables();
 	void BeginDecodePackageData();
-	void CheckLostPacket(float angle, unsigned short mirror);
+	void CheckLostPacket(double angle, unsigned short mirror);
 
 	void DecodeTensorLite(char* udpData, unsigned int t_sec, unsigned int t_usec);
 	void DecodeTensorPro(char* udpData, unsigned int t_sec, unsigned int t_usec);
@@ -119,12 +120,13 @@ private:
 	void DecodeScopeMiniA2_192(char* udpData);
 	void DecodeTempoA2(char* udpData);
 	void DecodeDuetto(char* udpData);
+	void SetDuettoVerticalAngleType(int type, double offsetVerAngleL, double offsetVerAngleR);
 	
 
 	void DecodeGPSData(char* udpData);	//decode gps date
 	void DecodeDIFData(char* udpData);
 	void DecodeIMUData(char* udpData);
-
+	void ClassifyHWStatusCode(char* rawcode, unsigned int &status);
 
 protected:
 	virtual void UseDecodeTensorPro(char* udpData, std::vector<TWPointData>& pointCloud);
@@ -244,6 +246,8 @@ protected:
 	double duettoPivotVector[3] = {0, 0, 1};
 	double m_correction_movement_L[3] = {0.017, 0, 0};
 	double m_correction_movement_R[3] = {-0.017, 0, 0};
+	double m_offsetVerAngleL = 0.0;
+	double m_offsetVerAngleR = 0.0;
 
 private:
 	int m_preBlockCount = 0;
@@ -267,6 +271,7 @@ private:
 	std::function<void(typename TWPointCloud<PointT>::Ptr, bool)> m_funcPointCloud = NULL;
 	std::function<void(const std::string&)> m_funcGPS = NULL;
 	std::function<void(const TWIMUData&)> m_funcIMU = NULL;
+	std::function<void(const char* ptr, int length)> m_funcEOLCalibration = NULL;
 
 	std::function<void(const TWException&)> m_funcException = NULL;
 
@@ -291,6 +296,12 @@ template <typename PointT>
 void DecodePackage<PointT>::RegIMUDataCallback(const std::function<void(const TWIMUData&)>& callback)
 {
 	m_funcIMU = callback;
+}
+
+template <typename PointT>
+void DecodePackage<PointT>::RegDeliveryCalibrateCallback(const std::function<void(const char* ptr, int length)>& callback)
+{
+	m_funcEOLCalibration = callback;
 }
 
 template <typename PointT>
@@ -812,7 +823,7 @@ void DecodePackage<PointT>::BeginDecodePackageData()
 }
 
 template <typename PointT>
-void DecodePackage<PointT>::CheckLostPacket(float angle, unsigned short mirror)
+void DecodePackage<PointT>::CheckLostPacket(double angle, unsigned short mirror)
 {
 	if (LT_TensorLite == m_lidarType || LT_TensorPro == m_lidarType || LT_TensorPro_echo2 == m_lidarType || LT_Scope == m_lidarType)
 	{
@@ -884,7 +895,7 @@ void DecodePackage<PointT>::UseDecodeTensorPro(char* udpData, std::vector<TWPoin
 			unsigned short  hexPulse = TwoHextoInt(udpData[offset + seq * 4 + 2], udpData[offset + seq * 4 + 3]);
 
 			double L = hexL * m_calSimple;
-			int intensity = (hexPulse * m_calPulse) / TensorPulseMapValue*255.0 + 0.5;
+			int intensity = (int)((hexPulse * m_calPulse) / TensorPulseMapValue*255.0 + 0.5);
 			double pulse = intensity > 255 ? 255 : intensity;
 
 			double cos_hA = cos(horizontalAngle * m_calRA);
@@ -938,7 +949,7 @@ void DecodePackage<PointT>::UseDecodeTensorPro_echo2(char* udpData, std::vector<
 			unsigned short  hexPulse = TwoHextoInt(udpData[offset + seq * 4 + 2], udpData[offset + seq * 4 + 3]);
 
 			double L = hexL * m_calSimple;
-			int intensity = (hexPulse * m_calPulse) / TensorPulseMapValue*255.0 + 0.5;
+			int intensity = (int)((hexPulse * m_calPulse) / TensorPulseMapValue*255.0 + 0.5);
 			double pulse = intensity > 255 ? 255 : intensity;
 
 			double cos_hA = cos(horizontalAngle * m_calRA);
@@ -1005,7 +1016,7 @@ void DecodePackage<PointT>::UseDecodeTensorPro0332(char* udpData, std::vector<TW
 			unsigned short  hexPulse = TwoHextoInt(udpData[offset + seq * 4 + 2], udpData[offset + seq * 4 + 3]);
 
 			double L = hexL * m_calSimple;
-			int intensity = (hexPulse * m_calPulse) / TensorPulseMapValue*255.0 + 0.5;
+			int intensity = (int)((hexPulse * m_calPulse) / TensorPulseMapValue*255.0 + 0.5);
 			double pulse = intensity > 255 ? 255 : intensity;
 
 			double cos_vA_RA = m_verticalChannelAngle16_cos_vA_RA[seq];
@@ -1073,14 +1084,14 @@ void DecodePackage<PointT>::UseDecodeScope(char* udpData, std::vector<TWPointDat
 			double hexToInt1 = TwoHextoInt(udpData[offset_block + seq * 8 + 0], udpData[offset_block + seq * 8 + 1]);
 			double hexPulse1 = TwoHextoInt(udpData[offset_block + seq * 8 + 2], udpData[offset_block + seq * 8 + 3]);
 			double L_1 = hexToInt1 * m_calSimple;
-			int intensity1 = (hexPulse1 * m_calPulse) / ScopePulseMapValue*255.0 + 0.5;
+			int intensity1 = (int)((hexPulse1 * m_calPulse) / ScopePulseMapValue*255.0 + 0.5);
 			double pulse_1 = intensity1 > 255 ? 255 : intensity1;
 
 
 			double hexToInt2 = TwoHextoInt(udpData[offset_block + seq * 8 + 4], udpData[offset_block + seq * 8 + 5]);
 			double hexPulse2 = TwoHextoInt(udpData[offset_block + seq * 8 + 6], udpData[offset_block + seq * 8 + 7]);
 			double L_2 = hexToInt2 * m_calSimple;
-			int intensity2 = (hexPulse2 * m_calPulse) / ScopePulseMapValue*255.0 + 0.5;
+			int intensity2 = (int)((hexPulse2 * m_calPulse) / ScopePulseMapValue*255.0 + 0.5);
 			double pulse_2 = intensity2 > 255 ? 255 : intensity2;
 
 			int channel = 65 - (16 * (blocks_num >= 4 ? blocks_num - 4 : blocks_num) + seq + 1);
@@ -1207,14 +1218,14 @@ void DecodePackage<PointT>::UseDecodeScope192(char* udpData, std::vector<TWPoint
 			double hexToInt1 = TwoHextoInt(udpData[offset + seq * 8 + 0], udpData[offset + seq * 8 + 1]);
 			double hexPulse1 = TwoHextoInt(udpData[offset + seq * 8 + 2], udpData[offset + seq * 8 + 3]);
 			double L_1 = hexToInt1 * m_calSimple;
-			int intensity1 = (hexPulse1 * m_calPulse) / ScopePulseMapValue*255.0 + 0.5;
+			int intensity1 = (int)((hexPulse1 * m_calPulse) / ScopePulseMapValue*255.0 + 0.5);
 			double pulse_1 = intensity1 > 255 ? 255 : intensity1;
 
 
 			double hexToInt2 = TwoHextoInt(udpData[offset + seq * 8 + 4], udpData[offset + seq * 8 + 5]);
 			double hexPulse2 = TwoHextoInt(udpData[offset + seq * 8 + 6], udpData[offset + seq * 8 + 7]);
 			double L_2 = hexToInt2 * m_calSimple;
-			int intensity2 = (hexPulse2 * m_calPulse) / ScopePulseMapValue*255.0 + 0.5;
+			int intensity2 = (int)((hexPulse2 * m_calPulse) / ScopePulseMapValue*255.0 + 0.5);
 			double pulse_2 = intensity2 > 255 ? 255 : intensity2;
 
 			int channel = 65 - (16 * (blocks_num >= 4 ? blocks_num - 4 : blocks_num) + seq + 1);
@@ -1344,14 +1355,14 @@ void DecodePackage<PointT>::UseDecodeScopeMiniA2_192(char* udpData, std::vector<
 			double hexToInt1 = TwoHextoInt(udpData[offset + seq * 8 + 0], udpData[offset + seq * 8 + 1]);
 			double hexPulse1 = TwoHextoInt(udpData[offset + seq * 8 + 2], udpData[offset + seq * 8 + 3]);
 			double L_1 = hexToInt1 * m_calSimple;
-			int intensity1 = (hexPulse1 * m_calPulse) / ScopePulseMapValue*255.0 + 0.5;
+			int intensity1 = (int)((hexPulse1 * m_calPulse) / ScopePulseMapValue*255.0 + 0.5);
 			double pulse_1 = intensity1 > 255 ? 255 : intensity1;
 
 
 			double hexToInt2 = TwoHextoInt(udpData[offset + seq * 8 + 4], udpData[offset + seq * 8 + 5]);
 			double hexPulse2 = TwoHextoInt(udpData[offset + seq * 8 + 6], udpData[offset + seq * 8 + 7]);
 			double L_2 = hexToInt2 * m_calSimple;
-			int intensity2 = (hexPulse2 * m_calPulse) / ScopePulseMapValue*255.0 + 0.5;
+			int intensity2 = (int)((hexPulse2 * m_calPulse) / ScopePulseMapValue*255.0 + 0.5);
 			double pulse_2 = intensity2 > 255 ? 255 : intensity2;
 
 			int channel = 65 - (16 * (blocks_num >= 4 ? blocks_num - 4 : blocks_num) + seq + 1);
@@ -1475,13 +1486,13 @@ void DecodePackage<PointT>::UseDecodeTempoA2(char* udpData, std::vector<TWPointD
 			double hexToInt1 = TwoHextoInt(udpData[offset + seq * 8 + 0], udpData[offset + seq * 8 + 1]);
 			double hexPulse1 = TwoHextoInt(udpData[offset + seq * 8 + 2], udpData[offset + seq * 8 + 3]);
 			double L_1 = hexToInt1 * m_calSimpleFPGA;
-			int intensity1 = (hexPulse1 * m_calPulseFPGA) / ScopePulseMapValue*255.0 + 0.5;
+			int intensity1 = (int)((hexPulse1 * m_calPulseFPGA) / ScopePulseMapValue*255.0 + 0.5);
 			double pulse_1 = intensity1 > 255 ? 255 : intensity1;
 
 			double hexToInt2 = TwoHextoInt(udpData[offset + seq * 8 + 4], udpData[offset + seq * 8 + 5]);
 			double hexPulse2 = TwoHextoInt(udpData[offset + seq * 8 + 6], udpData[offset + seq * 8 + 7]);
 			double L_2 = hexToInt2 * m_calSimpleFPGA;
-			int intensity2 = (hexPulse2 * m_calPulseFPGA) / ScopePulseMapValue*255.0 + 0.5;
+			int intensity2 = (int)((hexPulse2 * m_calPulseFPGA) / ScopePulseMapValue*255.0 + 0.5);
 			double pulse_2 = intensity2 > 255 ? 255 : intensity2;
 
 			int channel = 65 - (16 * (blocks_num >= 4 ? blocks_num - 4 : blocks_num) + seq + 1);
@@ -1763,6 +1774,10 @@ void DecodePackage<PointT>::DecodeDIFData(char* udpData)
 	double mirrorB = (hex8_mirrorB - 128) * 0.01 + (0);
 	double mirrorC = (hex8_mirrorC - 128) * 0.01 + (4.5);
 
+	unsigned int offsetAngle = FourHexToInt(udpData[508 + 4 * 30 + 0], udpData[508 + 4 * 30 + 1], udpData[508 + 4 * 30 + 2], udpData[508 + 4 * 30 + 3]);
+	double offsetVerAngleL = (((int)((offsetAngle >> 9) & 0x000001FF)) - 256)*0.01;
+	double offsetVerAngleR = (((int)(offsetAngle & 0x000001FF)) - 256)*0.01;
+
 	//
 	unsigned short hexMoveAngleL = TwoHextoInt(udpData[508 + 4 * 31 + 0], udpData[508 + 4 * 31 + 1]);
 	unsigned short hexMoveAngleR = TwoHextoInt(udpData[508 + 4 * 31 + 2], udpData[508 + 4 * 31 + 3]);
@@ -1819,15 +1834,39 @@ void DecodePackage<PointT>::DecodeDIFData(char* udpData)
 		duettoPivotVector[0] = pivotVectorX;
 		//std::cout << "PivotVector: X, " << pivotVectorX << std::endl;
 	}
+
 	if (!IsEqualityFloat5(pivotVectorY, duettoPivotVector[1]))
 	{
 		duettoPivotVector[1] = pivotVectorY;
 		//std::cout << "PivotVector: Y, " << pivotVectorY << std::endl;
 	}
+	
 	if (!IsEqualityFloat5(pivotVectorZ, duettoPivotVector[2]))
 	{
 		duettoPivotVector[2] = pivotVectorZ;
 		//std::cout << "PivotVector: Z, " << pivotVectorZ << std::endl;
+	}
+
+	// Classify and record hardware status code to point cloud frame.
+	ClassifyHWStatusCode(&udpData[384], m_pointCloudPtr -> TW_STATUS_CODE);
+
+	// Delivery Calibrate
+	// std::cout << "Process Calibrate." << std::endl;
+	if (m_funcEOLCalibration)
+	{
+		m_funcEOLCalibration(&(udpData[764]), 256);
+	}
+
+	if ((!IsEqualityFloat3(offsetVerAngleL, m_offsetVerAngleL)) ||
+		(!IsEqualityFloat3(offsetVerAngleR, m_offsetVerAngleR)))
+	{
+		m_offsetVerAngleL = offsetVerAngleL;
+		m_offsetVerAngleR = offsetVerAngleR;
+
+		SetDuettoVerticalAngleType(
+			0,
+			m_offsetVerAngleL,
+			m_offsetVerAngleR);
 	}
 }
 
@@ -1840,7 +1879,7 @@ void DecodePackage<PointT>::DecodeIMUData(char* udpData)
 	unsigned int t_sec = FourHexToInt(udpData[13], udpData[14], udpData[15], udpData[16]);
 	double t_usec = FourHexToInt(udpData[17], udpData[18], udpData[19], udpData[20]) * 0.1;
 
-	imu_data.stamp = (uint64_t)(t_sec) * 1000 * 1000 + t_usec;
+	imu_data.stamp = (uint64_t)((uint64_t)(t_sec) * 1000 * 1000 + t_usec);
 
 	//status calibrate
 	unsigned char  hex_status = udpData[35];
@@ -2173,6 +2212,8 @@ void DecodePackage<PointT>::DecodeDuetto(char* udpData)
 		CalculateRotateAllPointCloud(oriPoint);
 
 		PointT basic_point;
+		// setX(basic_point, -static_cast<float>(oriPoint.y));
+		// setY(basic_point, static_cast<float>(oriPoint.x));
 		setX(basic_point, static_cast<float>(oriPoint.x));
 		setY(basic_point, static_cast<float>(oriPoint.y));
 		setZ(basic_point, static_cast<float>(oriPoint.z));
@@ -2290,5 +2331,74 @@ void DecodePackage<PointT>::DecodeTempoA2(char* udpData)
 		setT_usec(basic_point, oriPoint.t_usec);
 
 		m_pointCloudPtr->PushBack(std::move(basic_point));
+	}
+}
+
+template <typename PointT>
+void DecodePackage<PointT>::ClassifyHWStatusCode(char* rawcode, unsigned int &status)
+{
+	struct hwcode {
+		unsigned int low;
+		unsigned int high;
+	};
+	struct hwcode s;
+	unsigned long long *code = (unsigned long long *)&s;
+	
+	unsigned long long classifier_LIDAR_ERROR_TIMESTAMP     =     0x0000000000000020;
+	unsigned long long classifier_LIDAR_WARNING_HARDWARE    =     0x2000000600500000;
+	unsigned long long classifier_LIDAR_ERROR_HARDWARE      =     0x1E7E1FF8022E3FDE;
+	unsigned long long classifier_LIDAR_ERROR_UNCALIBRATED  =     0x0000000000010000;
+	unsigned long long classifier_LIDAR_ERROR_SHELTERED     =     0x4000000000000000;
+	unsigned long long classifier_LIDAR_ERROR_DUST          =     0x2000000000000000;
+
+	// byte[0..7]: 40, 60, 00, 00, 00, 01, 00, 2a.
+	s.low |= (rawcode[7] & 0x000000ff);
+	s.low |= ((rawcode[6] << 8) & 0x0000ff00);
+	s.low |= ((rawcode[5] << 16) & 0x00ff0000);
+	s.low |= ((rawcode[4] << 24) & 0xff000000);
+	s.high |= (rawcode[3] & 0x000000ff);
+	s.high |= ((rawcode[2] << 8) & 0x0000ff00);
+	s.high |= ((rawcode[1] << 16) & 0x00ff0000);
+	s.high |= ((rawcode[0] << 24) & 0xff000000);
+
+	if ((*code) & classifier_LIDAR_ERROR_TIMESTAMP) {
+		status |= (0x01 << 0);
+	}
+	if ((*code) & classifier_LIDAR_WARNING_HARDWARE) {
+		status |= (0x01 << 1);
+	}
+	if ((*code) & classifier_LIDAR_ERROR_HARDWARE) {
+		status |= (0x01 << 2);
+	}
+	if ((*code) & classifier_LIDAR_ERROR_UNCALIBRATED) {
+		status |= (0x01 << 3);
+	}
+	if ((*code) & classifier_LIDAR_ERROR_SHELTERED) {
+		status |= (0x01 << 4);
+	}
+	if ((*code) & classifier_LIDAR_ERROR_DUST) {
+		status |= (0x01 << 5);
+	}
+	
+	// printf("[SDK][Debug] status code,byte[0..7]: %.2x, %.2x, %.2x, %.2x, %.2x, %.2x, %.2x, %.2x.\n",
+	// 		rawcode[0], rawcode[1], rawcode[2], rawcode[3],
+	// 		rawcode[4], rawcode[5], rawcode[6], rawcode[7]);
+
+	// printf("[SDK][Debug] Hardware status code: 0X%16.16llx\n", *code);
+}
+
+template <typename PointT>
+void DecodePackage<PointT>::SetDuettoVerticalAngleType(int type, double offsetVerAngleL, double offsetVerAngleR)
+{
+	// Duetto
+	for (int i = 0; i < 16; i++)
+	{
+		double vA_L = m_verticalChannelsAngle_Duetto16L[i] + offsetVerAngleL;
+		m_verticalChannelAngle_Duetto16L_cos_vA_RA[i] = cos(vA_L * m_calRA);
+		m_verticalChannelAngle_Duetto16L_sin_vA_RA[i] = sin(vA_L * m_calRA);
+
+		double vA_R = m_verticalChannelsAngle_Duetto16R[i] + offsetVerAngleR;
+		m_verticalChannelAngle_Duetto16R_cos_vA_RA[i] = cos(vA_R * m_calRA);
+		m_verticalChannelAngle_Duetto16R_sin_vA_RA[i] = sin(vA_R * m_calRA);
 	}
 }
