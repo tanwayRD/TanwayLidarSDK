@@ -47,6 +47,7 @@
 #include <math.h>
 #include <time.h>
 
+#include <eigen3/Eigen/Core>
 //#include <netinet/in.h>
 
 /*Linux*/

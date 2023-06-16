@@ -127,6 +127,7 @@ private:
 	void DecodeDIFData(char* udpData);
 	void DecodeIMUData(char* udpData);
 	void ClassifyHWStatusCode(char* rawcode, unsigned int &status);
+	void GetCalibrationResultFromLiDAR(const char *ptr);
 
 protected:
 	virtual void UseDecodeTensorPro(char* udpData, std::vector<TWPointData>& pointCloud);
@@ -148,6 +149,7 @@ protected:
 	inline bool IsEqualityFloat3(const double value1, const double value2);
 	inline bool IsEqualityFloat5(const double value1, const double value2);
 	inline void CalculateRotateAllPointCloud(TWPointData& point);
+	inline bool isCalibrated(const char* ptr);
 
 public:
 	double m_startAngle = 30.0;
@@ -1857,6 +1859,12 @@ void DecodePackage<PointT>::DecodeDIFData(char* udpData)
 		m_funcEOLCalibration(&(udpData[764]), 256);
 	}
 
+	if (isCalibrated(&udpData[384]))
+	{
+		m_pointCloudPtr -> isCalibrated = true;
+		GetCalibrationResultFromLiDAR(&udpData[764]);
+	}
+
 	if ((!IsEqualityFloat3(offsetVerAngleL, m_offsetVerAngleL)) ||
 		(!IsEqualityFloat3(offsetVerAngleR, m_offsetVerAngleR)))
 	{
@@ -2401,4 +2409,38 @@ void DecodePackage<PointT>::SetDuettoVerticalAngleType(int type, double offsetVe
 		m_verticalChannelAngle_Duetto16R_cos_vA_RA[i] = cos(vA_R * m_calRA);
 		m_verticalChannelAngle_Duetto16R_sin_vA_RA[i] = sin(vA_R * m_calRA);
 	}
+}
+
+template <typename PointT>
+void DecodePackage<PointT>::GetCalibrationResultFromLiDAR(const char *ptr)
+{
+    m_pointCloudPtr -> m_matrixResult(0, 0) = double(FourHexToFloat(ptr[26], ptr[27], ptr[28], ptr[29]));
+    m_pointCloudPtr -> m_matrixResult(0, 1) = -double(FourHexToFloat(ptr[22], ptr[23], ptr[24], ptr[25]));
+    m_pointCloudPtr -> m_matrixResult(0, 2) = double(FourHexToFloat(ptr[30], ptr[31], ptr[32], ptr[33]));
+    m_pointCloudPtr -> m_matrixResult(0, 3) = double(FourHexToFloat(ptr[34], ptr[35], ptr[36], ptr[37]));
+
+    m_pointCloudPtr -> m_matrixResult(1, 0) = double(FourHexToFloat(ptr[42], ptr[43], ptr[44], ptr[45]));
+    m_pointCloudPtr -> m_matrixResult(1, 1) = -double(FourHexToFloat(ptr[38], ptr[39], ptr[40], ptr[41]));
+    m_pointCloudPtr -> m_matrixResult(1, 2) = double(FourHexToFloat(ptr[46], ptr[47], ptr[48], ptr[49]));
+    m_pointCloudPtr -> m_matrixResult(1, 3) = double(FourHexToFloat(ptr[50], ptr[51], ptr[52], ptr[53]));
+
+    m_pointCloudPtr -> m_matrixResult(2, 0) = double(FourHexToFloat(ptr[58], ptr[59], ptr[60], ptr[61]));
+    m_pointCloudPtr -> m_matrixResult(2, 1) = -double(FourHexToFloat(ptr[54], ptr[55], ptr[56], ptr[57]));
+    m_pointCloudPtr -> m_matrixResult(2, 2) = double(FourHexToFloat(ptr[62], ptr[63], ptr[64], ptr[65]));
+    m_pointCloudPtr -> m_matrixResult(2, 3) = double(FourHexToFloat(ptr[66], ptr[67], ptr[68], ptr[69]));
+
+    m_pointCloudPtr -> m_matrixResult(3, 0) = double(FourHexToFloat(ptr[70], ptr[71], ptr[72], ptr[73]));
+    m_pointCloudPtr -> m_matrixResult(3, 1) = double(FourHexToFloat(ptr[74], ptr[75], ptr[76], ptr[77]));
+    m_pointCloudPtr -> m_matrixResult(3, 2) = double(FourHexToFloat(ptr[78], ptr[79], ptr[80], ptr[81]));
+    m_pointCloudPtr -> m_matrixResult(3, 3) = double(FourHexToFloat(ptr[82], ptr[83], ptr[84], ptr[85]));
+
+	// std::cout << "\033[0m\033[1;33m[SDK][RTSF][DecodePackage]Convert Matrix: \033[0m" << std::endl;
+    // std::cout << "\033[0m\033[1;32m" << m_pointCloudPtr -> m_matrixResult << "\033[0m" << std::endl;
+}
+template <typename PointT>
+inline bool DecodePackage<PointT>::isCalibrated(const char* ptr)
+{
+	if(ptr[2] & 0x01)
+		return true;
+	return false;
 }

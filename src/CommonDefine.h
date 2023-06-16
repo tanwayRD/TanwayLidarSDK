@@ -135,6 +135,8 @@ struct __attribute__((aligned(16))) TWPointCloud
 	std::string frame_id = "TanwayTP";
 
 	uint32_t TW_STATUS_CODE;
+	Eigen::Matrix4d m_matrixResult;
+	bool isCalibrated;
 
 	PointData m_pointData;
 };
