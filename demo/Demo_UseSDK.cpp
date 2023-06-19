@@ -32,7 +32,8 @@
 */
 
 #include "../TanwayLidarSDK.h"
- 
+uint64_t TW_EXCEPT_CODE = 0x00;
+
 //point struct
 struct PointXYZ
 {
@@ -55,9 +56,13 @@ void pointCloudCallback(TWPointCloud<PointXYZ>::Ptr pointCloud, bool lostPacket)
 	*Please copy the point cloud data to another thread for use.
 	*Avoid directly operating the UI in the callback function.
 	*/
+	pointCloud->TW_STATUS_CODE |= TW_EXCEPT_CODE;
+
 	std::cout << "width:" << pointCloud->width 
 			  << " height:" << pointCloud->height 
+			  << " status:" << pointCloud->TW_STATUS_CODE
 			  << " point cloud size: " << pointCloud->Size() << std::endl;
+	
 }
 
 void gpsCallback(std::string gps_value)
@@ -75,9 +80,16 @@ void exceptionCallback(const TWException& exception)
 	*Use another thread to respond to the exception to avoid time-consuming operations.
 	*/
 	if (exception.GetErrorCode() > 0)
+	{
+		TW_EXCEPT_CODE |= exception.GetErrorCode();
 		std::cout << "[Error Code]: " << exception.GetErrorCode() << " -> " << exception.ToString() << std::endl;
+	}
 	if (exception.GetTipsCode() > 0)
+	{
+		TW_EXCEPT_CODE |= exception.GetTipsCode();
 		std::cout << "[Tips Code]: " << exception.GetTipsCode() << " -> " << exception.ToString() << std::endl;	
+	}
+		
 }
 
 int main()
@@ -110,7 +122,7 @@ int main()
 	//lidar.Start();
 
 	//example:Duetto
-	TanwayLidarSDK<PointXYZ> lidar("192.168.111.51", "192.168.111.204", 5600, 5700, LT_Duetto);
+	TanwayLidarSDK<PointXYZ> lidar("10.0.0.253", "10.0.0.14", 5600, 5700, LT_Duetto);
 	lidar.RegPointCloudCallback(pointCloudCallback);
 	lidar.RegGPSCallback(gpsCallback);
 	lidar.RegExceptionCallback(exceptionCallback);

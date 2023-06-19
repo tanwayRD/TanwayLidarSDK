@@ -126,7 +126,7 @@ private:
 	void DecodeGPSData(char* udpData);	//decode gps date
 	void DecodeDIFData(char* udpData);
 	void DecodeIMUData(char* udpData);
-	void ClassifyHWStatusCode(char* rawcode, unsigned int &status);
+	void ClassifyHWStatusCode(char* rawcode, uint64_t &status);
 	void GetCalibrationResultFromLiDAR(const char *ptr);
 
 protected:
@@ -2343,11 +2343,11 @@ void DecodePackage<PointT>::DecodeTempoA2(char* udpData)
 }
 
 template <typename PointT>
-void DecodePackage<PointT>::ClassifyHWStatusCode(char* rawcode, unsigned int &status)
+void DecodePackage<PointT>::ClassifyHWStatusCode(char* rawcode, uint64_t &status)
 {
 	struct hwcode {
-		unsigned int low;
-		unsigned int high;
+		unsigned int low = 0x00;
+		unsigned int high = 0x00;
 	};
 	struct hwcode s;
 	unsigned long long *code = (unsigned long long *)&s;
@@ -2371,21 +2371,28 @@ void DecodePackage<PointT>::ClassifyHWStatusCode(char* rawcode, unsigned int &st
 
 	if ((*code) & classifier_LIDAR_ERROR_TIMESTAMP) {
 		status |= (0x01 << 0);
+		USE_EXCEPTION_TIPS(TWException::LIDAR_ERROR_TIMESTAMP, "Lidar not synchronized in time!");
 	}
 	if ((*code) & classifier_LIDAR_WARNING_HARDWARE) {
 		status |= (0x01 << 1);
+		USE_EXCEPTION_TIPS(TWException::LIDAR_WARNING_HARDWARE, "LiDAR hardware is in a degraded state!");
 	}
 	if ((*code) & classifier_LIDAR_ERROR_HARDWARE) {
 		status |= (0x01 << 2);
+		USE_EXCEPTION_TIPS(TWException::LIDAR_ERROR_HARDWARE, "LiDAR hardware is in a faulty state!");
+
 	}
 	if ((*code) & classifier_LIDAR_ERROR_UNCALIBRATED) {
 		status |= (0x01 << 3);
+		USE_EXCEPTION_TIPS(TWException::LIDAR_ERROR_UNCALIBRATED, "Lidar has not been EOL calibrated!");
 	}
 	if ((*code) & classifier_LIDAR_ERROR_SHELTERED) {
 		status |= (0x01 << 4);
+		USE_EXCEPTION_TIPS(TWException::LIDAR_ERROR_SHELTERED, "Lidar is obstructed!");
 	}
 	if ((*code) & classifier_LIDAR_ERROR_DUST) {
 		status |= (0x01 << 5);
+		USE_EXCEPTION_TIPS(TWException::LIDAR_ERROR_DUST, "Lidar is dirty!");
 	}
 	
 	// printf("[SDK][Debug] status code,byte[0..7]: %.2x, %.2x, %.2x, %.2x, %.2x, %.2x, %.2x, %.2x.\n",

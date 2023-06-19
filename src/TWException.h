@@ -54,43 +54,50 @@ public:
 	enum ErrorCode
 	{
 		TWEC_ERROR_NONE = 0x00,						///NONE
-		TWEC_ERROR_INIT_SOCKET = 0x01,				///Init socket error!
-		TWEC_ERROR_CREATE_SOCKET_POINT = 0x02,		///Create point cloud socket error!
-		TWEC_ERROR_CREATE_SOCKET_GPS = 0x03,		///Create gps socket error!
-		TWEC_ERROR_BIND_POINT = 0x04,				///Bind port for point cloud socket error!
-		TWEC_ERROR_BIND_GPS = 0x05,					///Bind port for gps socket error!
-		TWEC_ERROR_SETOPT_TIMEOUT_POINT = 0x06,		///Failed to set point cloud socket timeout!
-		TWEC_ERROR_SETOPT_TIMEOUT_GPS = 0x07,		///Failed to set gps socket timeout!
-		TWEC_ERROR_SOCKET_RECV_POINT = 0x08,		///The point cloud socket received failed and will exit!
-		TWEC_ERROR_SOCKET_RECV_GPS = 0x09,			///The gps socket received failed and will exit!
+		TWEC_ERROR_INIT_SOCKET = (0x01 << 6),				///Init socket error!
+		TWEC_ERROR_CREATE_SOCKET_POINT = (0x01 << 7),		///Create point cloud socket error!
+		TWEC_ERROR_CREATE_SOCKET_GPS = (0x01 << 8),		///Create gps socket error!
+		TWEC_ERROR_BIND_POINT = (0x01 << 9),				///Bind port for point cloud socket error!
+		TWEC_ERROR_BIND_GPS = (0x01 << 10),					///Bind port for gps socket error!
+		TWEC_ERROR_SETOPT_TIMEOUT_POINT = (0x01 << 11),		///Failed to set point cloud socket timeout!
+		TWEC_ERROR_SETOPT_TIMEOUT_GPS = (0x01 << 12),		///Failed to set gps socket timeout!
+		TWEC_ERROR_SOCKET_RECV_POINT = (0x01 << 13),		///The point cloud socket received failed and will exit!
+		TWEC_ERROR_SOCKET_RECV_GPS = (0x01 << 14),			///The gps socket received failed and will exit!
 
-		TWEC_ERROR_CREATE_SOCKET_DIF = 0x10,		///Create dif socket error!
-		TWEC_ERROR_BIND_DIF = 0x11,					///Bind port for dif socket error!
-		TWEC_ERROR_SETOPT_TIMEOUT_DIF = 0x12,		///Failed to set dif socket timeout!
-		TWEC_ERROR_SOCKET_RECV_DIF = 0x13,			///The dif socket received failed and will exit!
+		TWEC_ERROR_CREATE_SOCKET_DIF = (0x01 << 15),		///Create dif socket error!
+		TWEC_ERROR_BIND_DIF = (0x01 << 16),					///Bind port for dif socket error!
+		TWEC_ERROR_SETOPT_TIMEOUT_DIF = (0x01 << 17),		///Failed to set dif socket timeout!
+		TWEC_ERROR_SOCKET_RECV_DIF = (0x01 << 18),			///The dif socket received failed and will exit!
 
-		TWEC_ERROR_CREATE_SOCKET_SEND = 0x14,		///Create send socket error!
-		TWEC_ERROR_SOCKET_SEND_FAILED = 0x15,		///Send data error!
+		TWEC_ERROR_CREATE_SOCKET_SEND = (0x01 << 19),		///Create send socket error!
+		TWEC_ERROR_SOCKET_SEND_FAILED = (0x01 << 20),		///Send data error!
 
-		TWEC_ERROR_OPEN_PCAP_FAILED = 0x51,			///Open pcap file failed!
-		TWEC_ERROR_PCAP_FILE_INVALID = 0x52,		///The pcap file is invalid!
+		TWEC_ERROR_OPEN_PCAP_FAILED = 0x00,			///Open pcap file failed!
+		TWEC_ERROR_PCAP_FILE_INVALID = 0x00,		///The pcap file is invalid!
 	};
 	enum TipsCode
 	{
 		TWEC_TIPS_NONE = 0x00,				///NONE
-		TWEC_TIPS_TIMEOUT_POINT = 0x01,		///Receive point data time out!
-		TWEC_TIPS_TIMEOUT_GPS = 0x02,		///Receive gps data time out!
-		TWEC_TIPS_EXIT_POINT = 0x03,		///The point cloud data receiver thread has exited!
-		TWEC_TIPS_EXIT_GPS = 0x04,			///The gps data receiver thread has exited!
-		TWEC_TIPS_EXIT_DECODE = 0x05,		///The decode package thread has exited!
-		TWEC_TIPS_TIMEOUT_DIF = 0x06,		///Receive dif data time out!
-		TWEC_TIPS_EXIT_DIF = 0x07,			///The dif data receiver thread has exited!
+		LIDAR_ERROR_TIMESTAMP = (0x01 << 0),	//Lidar not synchronized in time!
+		LIDAR_WARNING_HARDWARE = (0x01 << 1),	//LiDAR hardware is in a degraded state!
+		LIDAR_ERROR_HARDWARE = (0x01 << 2),		//LiDAR hardware is in a faulty state!
+		LIDAR_ERROR_UNCALIBRATED = (0x01 << 3),	 //Lidar has not been EOL calibrated!
+		LIDAR_ERROR_SHELTERED = (0x01 << 4),	 //Lidar is obstructed!
+		LIDAR_ERROR_DUST = (0x01 << 5),	 //Lidar is dirty!
 
-		TWEC_TIPS_OPEN_PCAP_SUCCESS = 0x51,	///Open pcap file successed!
-		TWEC_TIPS_PCAP_EXIT = 0x52,			///Exit reading the PCAP file!
-		TWEC_TIPS_REPEAT_PLAY = 0x53,		///Repeat to read!
-		TWEC_TIPS_NOMATCH_DEVICE = 0x54,	///Lidar type and protocol data do not match!
-		TWEC_TIPS_INVALID_DEVICE = 0x55,	///Invalid device type!
+		TWEC_TIPS_TIMEOUT_POINT = (0x01 << 23),		///Receive point data time out!
+		TWEC_TIPS_TIMEOUT_GPS = (0x01 << 24),		///Receive gps data time out!
+		TWEC_TIPS_EXIT_POINT = 0x00,		///The point cloud data receiver thread has exited!
+		TWEC_TIPS_EXIT_GPS = 0x00,			///The gps data receiver thread has exited!
+		TWEC_TIPS_EXIT_DECODE = 0x00,		///The decode package thread has exited!
+		TWEC_TIPS_TIMEOUT_DIF = (0x01 << 25),		///Receive dif data time out!
+		TWEC_TIPS_EXIT_DIF = 0x00,			///The dif data receiver thread has exited!
+
+		TWEC_TIPS_OPEN_PCAP_SUCCESS = 0x00,	///Open pcap file successed!
+		TWEC_TIPS_PCAP_EXIT = 0x00,			///Exit reading the PCAP file!
+		TWEC_TIPS_REPEAT_PLAY = 0x00,		///Repeat to read!
+		TWEC_TIPS_NOMATCH_DEVICE = (0x01 << 21),	///Lidar type and protocol data do not match!
+		TWEC_TIPS_INVALID_DEVICE = (0x01 << 22),	///Invalid device type!
 	};
 
 

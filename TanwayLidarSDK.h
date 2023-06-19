@@ -37,7 +37,7 @@
 #include "src/PcapReader.h"
 #include "src/DecodePackage.h"
 #include "src/TWException.h"
-#include "tanway/calibTools.h"
+//#include "tanway/calibTools.h"
 
 /*
 *Interface classes for the SDK
@@ -108,6 +108,7 @@ public:
 	/*
 	*Register the exception info callback function.
 	*/
+	// void RegExceptionCallback(const std::function<void(typename TWPointCloud<PointT>::Ptr, const TWException&)>& callback);
 	void RegExceptionCallback(const std::function<void(const TWException&)>& callback);
 
 	/*
@@ -242,6 +243,7 @@ void TanwayLidarSDK<PointT>::RegDeliveryCalibrateCallback(const std::function<vo
 }
 
 template <typename PointT>
+// void TanwayLidarSDK<PointT>::RegExceptionCallback(const std::function<void(typename TWPointCloud<PointT>::Ptr, const TWException&)>& callback)
 void TanwayLidarSDK<PointT>::RegExceptionCallback(const std::function<void(const TWException&)>& callback)
 {
 	if (m_networkReaderPtr)
