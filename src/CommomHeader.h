@@ -48,6 +48,7 @@
 #include <time.h>
 
 #include <eigen3/Eigen/Core>
+#include <yaml-cpp/yaml.h>
 //#include <netinet/in.h>
 
 /*Linux*/

@@ -128,6 +128,7 @@ private:
 	void DecodeIMUData(char* udpData);
 	void ClassifyHWStatusCode(char* rawcode, uint64_t &status);
 	void GetCalibrationResultFromLiDAR(const char *ptr);
+	void LoadCalibrationResultMatrixFromYaml(const std::string& calibrationResultMatrixPath);
 
 protected:
 	virtual void UseDecodeTensorPro(char* udpData, std::vector<TWPointData>& pointCloud);
@@ -150,6 +151,7 @@ protected:
 	inline bool IsEqualityFloat5(const double value1, const double value2);
 	inline void CalculateRotateAllPointCloud(TWPointData& point);
 	inline bool isCalibrated(const char* ptr);
+	void ConvertCalibratedPointCloud(const Eigen::Matrix4d& calibrationMat, TWPointData& point);
 
 public:
 	double m_startAngle = 30.0;
@@ -219,7 +221,6 @@ protected:
 	double m_skewing_sin_scopeMiniA2_192[3] = { 0.0 };
 	double m_skewing_cos_scopeMiniA2_192[3] = { 0.0 };
 
-
 	//Duetto
 	float m_verticalChannelsAngle_Duetto16L[16] =
 	{
@@ -232,6 +233,7 @@ protected:
 		-3.51152f, -3.00987f, -2.50823f, -2.00658f, -1.50494f, -1.00329f, -0.50165f, 0.0f,
 		0.501645f, 1.003224f, 1.504673f, 2.005925f, 2.506916f, 3.00758f, 3.507853f, 4.00767f
 	};
+
 	double m_verticalChannelAngle_Duetto16L_cos_vA_RA[16] = { 0 };
 	double m_verticalChannelAngle_Duetto16L_sin_vA_RA[16] = { 0 };
 	double m_verticalChannelAngle_Duetto16R_cos_vA_RA[16] = { 0 };
@@ -259,10 +261,10 @@ private:
 	int g_recvFrameCount = 0;
 	double g_calTimeTotal = 0;
 
-
 	//0:LT_TensorLite,1:LT_TensorPro,2:LT_TensorPro_echo2,3:LT_Scope,4:LT_TSP0332,5:LT_Scope192,6:LT_Duetto,7:LT_ScopeMiniA2_192
 	int TWLidarBlockCount[LT_Total] = {600, 600, 1200, 720*4, 1200, 720*4*3, 960*3, 720*4*3};
 	int TWLidarBlockCountOffset[LT_Total] = {2, 2, 4, 2*4, 4, 6*4, 6, 6*4};
+
 private:
 	std::shared_ptr<PackageCache> m_packageCachePtr;
 	TWLidarType m_lidarType;
@@ -276,6 +278,11 @@ private:
 	std::function<void(const char* ptr, int length)> m_funcEOLCalibration = NULL;
 
 	std::function<void(const TWException&)> m_funcException = NULL;
+
+	uint64_t TW_STATUS_CODE = 0x00;
+	Eigen::Matrix4d m_calibMat;
+	bool m_calibrated = false;
+	bool m_useLocalCalibMat = false;
 
 public:
 	typename TWPointCloud<PointT>::Ptr m_pointCloudPtr;
@@ -461,6 +468,20 @@ inline void DecodePackage<PointT>::CalculateRotateAllPointCloud(TWPointData& poi
 	point.x += m_transformMoveX;
 	point.y += m_transformMoveY;
 	point.z += m_transformMoveZ;
+}
+
+template <typename PointT>
+void DecodePackage<PointT>::ConvertCalibratedPointCloud(const Eigen::Matrix4d& calibrationMat, TWPointData& point)
+{
+	Eigen::Matrix<double, 4, 1> oriPoint;
+	oriPoint[0] = point.x;
+	oriPoint[1] = point.y;
+	oriPoint[2] = point.z;
+	oriPoint[3] = 1;
+	oriPoint = calibrationMat * oriPoint;
+	point.x = oriPoint[0];
+	point.y = oriPoint[1];
+	point.z = oriPoint[2];
 }
 
 template <typename PointT>
@@ -707,6 +728,8 @@ void DecodePackage<PointT>::InitBasicVariables()
 	m_rotate_duetto_sinR = sin(m_rightMoveAngle * m_calRA);  //
 	m_rotate_duetto_cosR = cos(m_rightMoveAngle * m_calRA);  //
 
+	// load the calibration matrix from config
+	LoadCalibrationResultMatrixFromYaml("config/parameter.yaml");
 }
 
 template <typename PointT>
@@ -1850,7 +1873,8 @@ void DecodePackage<PointT>::DecodeDIFData(char* udpData)
 	}
 
 	// Classify and record hardware status code to point cloud frame.
-	ClassifyHWStatusCode(&udpData[384], m_pointCloudPtr -> TW_STATUS_CODE);
+	if (!m_useLocalCalibMat)
+		ClassifyHWStatusCode(&udpData[384], TW_STATUS_CODE);
 
 	// Delivery Calibrate
 	// std::cout << "Process Calibrate." << std::endl;
@@ -1859,12 +1883,12 @@ void DecodePackage<PointT>::DecodeDIFData(char* udpData)
 		m_funcEOLCalibration(&(udpData[764]), 256);
 	}
 
-	if (isCalibrated(&udpData[384]))
+	if (!m_useLocalCalibMat && isCalibrated(&udpData[384]))
 	{
-		m_pointCloudPtr -> isCalibrated = true;
 		GetCalibrationResultFromLiDAR(&udpData[764]);
+		m_calibrated = true;
 	}
-
+	
 	if ((!IsEqualityFloat3(offsetVerAngleL, m_offsetVerAngleL)) ||
 		(!IsEqualityFloat3(offsetVerAngleR, m_offsetVerAngleR)))
 	{
@@ -1943,6 +1967,9 @@ void DecodePackage<PointT>::DecodeTensorPro(char* udpData, unsigned int t_sec, u
 			unsigned int last_sec = m_pointCloudPtr->m_pointData[m_pointCloudPtr->width - 1].t_sec;
 			unsigned int last_usec = m_pointCloudPtr->m_pointData[m_pointCloudPtr->width - 1].t_usec;
 			m_pointCloudPtr->stamp = (uint64_t)(last_sec) * 1000 * 1000 + last_usec;
+			m_pointCloudPtr->isCalibrated = m_calibrated;
+			m_pointCloudPtr->m_matrixResult = m_calibMat;
+			m_pointCloudPtr->TW_STATUS_CODE = TW_STATUS_CODE;
 
 			std::lock_guard<std::mutex> lock(*m_mutex);
 			if (m_funcPointCloud) m_funcPointCloud(m_pointCloudPtr, m_bLostPacket);
@@ -1958,6 +1985,9 @@ void DecodePackage<PointT>::DecodeTensorPro(char* udpData, unsigned int t_sec, u
 		if (oriPoint.distance <= 0) continue;
 
 		CalculateRotateAllPointCloud(oriPoint);
+
+		if(m_calibrated)
+			ConvertCalibratedPointCloud(m_calibMat, oriPoint);
 
 		PointT basic_point;
 		setX(basic_point, static_cast<float>(oriPoint.x));
@@ -1995,6 +2025,9 @@ void DecodePackage<PointT>::DecodeTensorPro_echo2(char* udpData, unsigned int t_
 			unsigned int last_sec = m_pointCloudPtr->m_pointData[m_pointCloudPtr->width - 1].t_sec;
 			unsigned int last_usec = m_pointCloudPtr->m_pointData[m_pointCloudPtr->width - 1].t_usec;
 			m_pointCloudPtr->stamp = (uint64_t)(last_sec) * 1000 * 1000 + last_usec;
+			m_pointCloudPtr->isCalibrated = m_calibrated;
+			m_pointCloudPtr->m_matrixResult = m_calibMat;
+			m_pointCloudPtr->TW_STATUS_CODE = TW_STATUS_CODE;
 
 			std::lock_guard<std::mutex> lock(*m_mutex);
 			if (m_funcPointCloud) m_funcPointCloud(m_pointCloudPtr, m_bLostPacket);
@@ -2010,6 +2043,9 @@ void DecodePackage<PointT>::DecodeTensorPro_echo2(char* udpData, unsigned int t_
 		if (oriPoint.distance <= 0) continue;
 
 		CalculateRotateAllPointCloud(oriPoint);
+
+		if(m_calibrated)
+			ConvertCalibratedPointCloud(m_calibMat, oriPoint);
 
 		PointT basic_point;
 		setX(basic_point, static_cast<float>(oriPoint.x));
@@ -2047,6 +2083,9 @@ void DecodePackage<PointT>::DecodeTensorPro0332(char* udpData, unsigned int t_se
 			unsigned int last_sec = m_pointCloudPtr->m_pointData[m_pointCloudPtr->width - 1].t_sec;
 			unsigned int last_usec = m_pointCloudPtr->m_pointData[m_pointCloudPtr->width - 1].t_usec;
 			m_pointCloudPtr->stamp = (uint64_t)(last_sec) * 1000 * 1000 + last_usec;
+			m_pointCloudPtr->isCalibrated = m_calibrated;
+			m_pointCloudPtr->m_matrixResult = m_calibMat;
+			m_pointCloudPtr->TW_STATUS_CODE = TW_STATUS_CODE;
 
 			std::lock_guard<std::mutex> lock(*m_mutex);
 			if (m_funcPointCloud) m_funcPointCloud(m_pointCloudPtr, m_bLostPacket);
@@ -2062,6 +2101,9 @@ void DecodePackage<PointT>::DecodeTensorPro0332(char* udpData, unsigned int t_se
 		if (oriPoint.distance <= 0) continue;
 
 		CalculateRotateAllPointCloud(oriPoint);
+
+		if(m_calibrated)
+			ConvertCalibratedPointCloud(m_calibMat, oriPoint);
 
 		PointT basic_point;
 		setX(basic_point, static_cast<float>(oriPoint.x));
@@ -2099,6 +2141,9 @@ void DecodePackage<PointT>::DecodeScope(char* udpData)
 			unsigned int last_sec = m_pointCloudPtr->m_pointData[m_pointCloudPtr->width - 1].t_sec;
 			unsigned int last_usec = m_pointCloudPtr->m_pointData[m_pointCloudPtr->width - 1].t_usec;
 			m_pointCloudPtr->stamp = (uint64_t)(last_sec) * 1000 * 1000 + last_usec;
+			m_pointCloudPtr->isCalibrated = m_calibrated;
+			m_pointCloudPtr->m_matrixResult = m_calibMat;
+			m_pointCloudPtr->TW_STATUS_CODE = TW_STATUS_CODE;
 
 			std::lock_guard<std::mutex> lock(*m_mutex);
 			if (m_funcPointCloud) m_funcPointCloud(m_pointCloudPtr, m_bLostPacket);
@@ -2114,6 +2159,9 @@ void DecodePackage<PointT>::DecodeScope(char* udpData)
 		if (oriPoint.distance <= 0) continue;
 
 		CalculateRotateAllPointCloud(oriPoint);
+
+		if(m_calibrated)
+			ConvertCalibratedPointCloud(m_calibMat, oriPoint);
 
 		PointT basic_point;
 		setX(basic_point, static_cast<float>(oriPoint.x));
@@ -2151,6 +2199,9 @@ void DecodePackage<PointT>::DecodeScope192(char* udpData)
 			unsigned int last_sec = m_pointCloudPtr->m_pointData[m_pointCloudPtr->width - 1].t_sec;
 			unsigned int last_usec = m_pointCloudPtr->m_pointData[m_pointCloudPtr->width - 1].t_usec;
 			m_pointCloudPtr->stamp = (uint64_t)(last_sec) * 1000 * 1000 + last_usec;
+			m_pointCloudPtr->isCalibrated = m_calibrated;
+			m_pointCloudPtr->m_matrixResult = m_calibMat;
+			m_pointCloudPtr->TW_STATUS_CODE = TW_STATUS_CODE;
 
 			std::lock_guard<std::mutex> lock(*m_mutex);
 			if (m_funcPointCloud) m_funcPointCloud(m_pointCloudPtr, m_bLostPacket);
@@ -2166,6 +2217,9 @@ void DecodePackage<PointT>::DecodeScope192(char* udpData)
 		if (oriPoint.distance <= 0) continue;
 
 		CalculateRotateAllPointCloud(oriPoint);
+
+		if(m_calibrated)
+			ConvertCalibratedPointCloud(m_calibMat, oriPoint);
 
 		PointT basic_point;
 		setX(basic_point, static_cast<float>(oriPoint.x));
@@ -2203,6 +2257,9 @@ void DecodePackage<PointT>::DecodeDuetto(char* udpData)
 			unsigned int last_sec = m_pointCloudPtr->m_pointData[m_pointCloudPtr->width - 1].t_sec;
 			unsigned int last_usec = m_pointCloudPtr->m_pointData[m_pointCloudPtr->width - 1].t_usec;
 			m_pointCloudPtr->stamp = (uint64_t)(last_sec) * 1000 * 1000 + last_usec;
+			m_pointCloudPtr->isCalibrated = m_calibrated;
+			m_pointCloudPtr->m_matrixResult = m_calibMat;
+			m_pointCloudPtr->TW_STATUS_CODE = TW_STATUS_CODE;
 
 			std::lock_guard<std::mutex> lock(*m_mutex);
 			if (m_funcPointCloud) m_funcPointCloud(m_pointCloudPtr, m_bLostPacket);
@@ -2218,6 +2275,9 @@ void DecodePackage<PointT>::DecodeDuetto(char* udpData)
 		if (oriPoint.distance <= 0) continue;
 
 		CalculateRotateAllPointCloud(oriPoint);
+
+		if(m_calibrated)
+			ConvertCalibratedPointCloud(m_calibMat, oriPoint);
 
 		PointT basic_point;
 		// setX(basic_point, -static_cast<float>(oriPoint.y));
@@ -2258,6 +2318,9 @@ void DecodePackage<PointT>::DecodeScopeMiniA2_192(char* udpData)
 			unsigned int last_sec = m_pointCloudPtr->m_pointData[m_pointCloudPtr->width - 1].t_sec;
 			unsigned int last_usec = m_pointCloudPtr->m_pointData[m_pointCloudPtr->width - 1].t_usec;
 			m_pointCloudPtr->stamp = (uint64_t)(last_sec) * 1000 * 1000 + last_usec;
+			m_pointCloudPtr->isCalibrated = m_calibrated;
+			m_pointCloudPtr->m_matrixResult = m_calibMat;
+			m_pointCloudPtr->TW_STATUS_CODE = TW_STATUS_CODE;
 
 			std::lock_guard<std::mutex> lock(*m_mutex);
 			if (m_funcPointCloud) m_funcPointCloud(m_pointCloudPtr, m_bLostPacket);
@@ -2273,6 +2336,9 @@ void DecodePackage<PointT>::DecodeScopeMiniA2_192(char* udpData)
 		if (oriPoint.distance <= 0) continue;
 
 		CalculateRotateAllPointCloud(oriPoint);
+
+		if(m_calibrated)
+			ConvertCalibratedPointCloud(m_calibMat, oriPoint);
 
 		PointT basic_point;
 		setX(basic_point, static_cast<float>(oriPoint.x));
@@ -2310,6 +2376,9 @@ void DecodePackage<PointT>::DecodeTempoA2(char* udpData)
 			unsigned int last_sec = m_pointCloudPtr->m_pointData[m_pointCloudPtr->width - 1].t_sec;
 			unsigned int last_usec = m_pointCloudPtr->m_pointData[m_pointCloudPtr->width - 1].t_usec;
 			m_pointCloudPtr->stamp = (uint64_t)(last_sec) * 1000 * 1000 + last_usec;
+			m_pointCloudPtr->isCalibrated = m_calibrated;
+			m_pointCloudPtr->m_matrixResult = m_calibMat;
+			m_pointCloudPtr->TW_STATUS_CODE = TW_STATUS_CODE;
 
 			std::lock_guard<std::mutex> lock(*m_mutex);
 			if (m_funcPointCloud) m_funcPointCloud(m_pointCloudPtr, m_bLostPacket);
@@ -2325,6 +2394,9 @@ void DecodePackage<PointT>::DecodeTempoA2(char* udpData)
 		if (oriPoint.distance <= 0) continue;
 
 		CalculateRotateAllPointCloud(oriPoint);
+
+		if(m_calibrated)
+			ConvertCalibratedPointCloud(m_calibMat, oriPoint);
 
 		PointT basic_point;
 		setX(basic_point, static_cast<float>(oriPoint.x));
@@ -2421,29 +2493,59 @@ void DecodePackage<PointT>::SetDuettoVerticalAngleType(int type, double offsetVe
 template <typename PointT>
 void DecodePackage<PointT>::GetCalibrationResultFromLiDAR(const char *ptr)
 {
-    m_pointCloudPtr -> m_matrixResult(0, 0) = double(FourHexToFloat(ptr[26], ptr[27], ptr[28], ptr[29]));
-    m_pointCloudPtr -> m_matrixResult(0, 1) = -double(FourHexToFloat(ptr[22], ptr[23], ptr[24], ptr[25]));
-    m_pointCloudPtr -> m_matrixResult(0, 2) = double(FourHexToFloat(ptr[30], ptr[31], ptr[32], ptr[33]));
-    m_pointCloudPtr -> m_matrixResult(0, 3) = double(FourHexToFloat(ptr[34], ptr[35], ptr[36], ptr[37]));
+    m_calibMat(0, 0) = double(FourHexToFloat(ptr[26], ptr[27], ptr[28], ptr[29]));
+    m_calibMat(0, 1) = -double(FourHexToFloat(ptr[22], ptr[23], ptr[24], ptr[25]));
+    m_calibMat(0, 2) = double(FourHexToFloat(ptr[30], ptr[31], ptr[32], ptr[33]));
+    m_calibMat(0, 3) = double(FourHexToFloat(ptr[34], ptr[35], ptr[36], ptr[37]));
 
-    m_pointCloudPtr -> m_matrixResult(1, 0) = double(FourHexToFloat(ptr[42], ptr[43], ptr[44], ptr[45]));
-    m_pointCloudPtr -> m_matrixResult(1, 1) = -double(FourHexToFloat(ptr[38], ptr[39], ptr[40], ptr[41]));
-    m_pointCloudPtr -> m_matrixResult(1, 2) = double(FourHexToFloat(ptr[46], ptr[47], ptr[48], ptr[49]));
-    m_pointCloudPtr -> m_matrixResult(1, 3) = double(FourHexToFloat(ptr[50], ptr[51], ptr[52], ptr[53]));
+    m_calibMat(1, 0) = double(FourHexToFloat(ptr[42], ptr[43], ptr[44], ptr[45]));
+    m_calibMat(1, 1) = -double(FourHexToFloat(ptr[38], ptr[39], ptr[40], ptr[41]));
+    m_calibMat(1, 2) = double(FourHexToFloat(ptr[46], ptr[47], ptr[48], ptr[49]));
+    m_calibMat(1, 3) = double(FourHexToFloat(ptr[50], ptr[51], ptr[52], ptr[53]));
 
-    m_pointCloudPtr -> m_matrixResult(2, 0) = double(FourHexToFloat(ptr[58], ptr[59], ptr[60], ptr[61]));
-    m_pointCloudPtr -> m_matrixResult(2, 1) = -double(FourHexToFloat(ptr[54], ptr[55], ptr[56], ptr[57]));
-    m_pointCloudPtr -> m_matrixResult(2, 2) = double(FourHexToFloat(ptr[62], ptr[63], ptr[64], ptr[65]));
-    m_pointCloudPtr -> m_matrixResult(2, 3) = double(FourHexToFloat(ptr[66], ptr[67], ptr[68], ptr[69]));
+    m_calibMat(2, 0) = double(FourHexToFloat(ptr[58], ptr[59], ptr[60], ptr[61]));
+    m_calibMat(2, 1) = -double(FourHexToFloat(ptr[54], ptr[55], ptr[56], ptr[57]));
+    m_calibMat(2, 2) = double(FourHexToFloat(ptr[62], ptr[63], ptr[64], ptr[65]));
+    m_calibMat(2, 3) = double(FourHexToFloat(ptr[66], ptr[67], ptr[68], ptr[69]));
 
-    m_pointCloudPtr -> m_matrixResult(3, 0) = double(FourHexToFloat(ptr[70], ptr[71], ptr[72], ptr[73]));
-    m_pointCloudPtr -> m_matrixResult(3, 1) = double(FourHexToFloat(ptr[74], ptr[75], ptr[76], ptr[77]));
-    m_pointCloudPtr -> m_matrixResult(3, 2) = double(FourHexToFloat(ptr[78], ptr[79], ptr[80], ptr[81]));
-    m_pointCloudPtr -> m_matrixResult(3, 3) = double(FourHexToFloat(ptr[82], ptr[83], ptr[84], ptr[85]));
+    m_calibMat(3, 0) = double(FourHexToFloat(ptr[70], ptr[71], ptr[72], ptr[73]));
+    m_calibMat(3, 1) = double(FourHexToFloat(ptr[74], ptr[75], ptr[76], ptr[77]));
+    m_calibMat(3, 2) = double(FourHexToFloat(ptr[78], ptr[79], ptr[80], ptr[81]));
+    m_calibMat(3, 3) = double(FourHexToFloat(ptr[82], ptr[83], ptr[84], ptr[85]));
 
 	// std::cout << "\033[0m\033[1;33m[SDK][RTSF][DecodePackage]Convert Matrix: \033[0m" << std::endl;
     // std::cout << "\033[0m\033[1;32m" << m_pointCloudPtr -> m_matrixResult << "\033[0m" << std::endl;
 }
+
+template <typename PointT>
+void DecodePackage<PointT>::LoadCalibrationResultMatrixFromYaml(const std::string& calibrationResultMatrixPath)
+{
+	try
+	{
+		YAML::Node calibrationResultMatrix_node = YAML::LoadFile(calibrationResultMatrixPath);
+
+		if (!calibrationResultMatrix_node["ForceToUse"] || !calibrationResultMatrix_node["CalibrationMatrix"])
+        	return;
+	
+    	std::vector<double> calibrationResultMatrix = calibrationResultMatrix_node["CalibrationMatrix"].as<std::vector<double>>();
+    
+		if(calibrationResultMatrix.size() != 16)
+			return;
+	
+		for(int i = 0; i < 16; i++)
+			m_calibMat(i/4, i%4) = calibrationResultMatrix[i];
+
+		m_useLocalCalibMat = calibrationResultMatrix_node["ForceToUse"].as<bool>();
+		m_calibrated = m_useLocalCalibMat;
+	}
+	catch(const std::exception& e)
+	{
+		std::cerr << e.what() << '\n';
+	}
+
+    return;
+}
+
 template <typename PointT>
 inline bool DecodePackage<PointT>::isCalibrated(const char* ptr)
 {
