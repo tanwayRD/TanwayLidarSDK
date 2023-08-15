@@ -2220,10 +2220,8 @@ void DecodePackage<PointT>::DecodeDuetto(char* udpData)
 		CalculateRotateAllPointCloud(oriPoint);
 
 		PointT basic_point;
-		// setX(basic_point, -static_cast<float>(oriPoint.y));
-		// setY(basic_point, static_cast<float>(oriPoint.x));
-		setX(basic_point, static_cast<float>(oriPoint.y));
-		setY(basic_point, static_cast<float>(-oriPoint.x));
+		setX(basic_point, static_cast<float>(oriPoint.x));
+		setY(basic_point, static_cast<float>(oriPoint.y));
 		setZ(basic_point, static_cast<float>(oriPoint.z));
 		setIntensity(basic_point, static_cast<float>(oriPoint.pulse));
 		setChannel(basic_point, oriPoint.channel);
@@ -2421,23 +2419,23 @@ void DecodePackage<PointT>::SetDuettoVerticalAngleType(int type, double offsetVe
 template <typename PointT>
 void DecodePackage<PointT>::GetCalibrationResultFromLiDAR(const char *ptr)
 {
-    m_pointCloudPtr -> m_matrixResult(0, 0) = double(FourHexToFloat(ptr[26], ptr[27], ptr[28], ptr[29]));
-    m_pointCloudPtr -> m_matrixResult(0, 1) = -double(FourHexToFloat(ptr[22], ptr[23], ptr[24], ptr[25]));
+    m_pointCloudPtr -> m_matrixResult(0, 0) = double(FourHexToFloat(ptr[22], ptr[23], ptr[24], ptr[25]));
+    m_pointCloudPtr -> m_matrixResult(0, 1) = double(FourHexToFloat(ptr[26], ptr[27], ptr[28], ptr[29]));
     m_pointCloudPtr -> m_matrixResult(0, 2) = double(FourHexToFloat(ptr[30], ptr[31], ptr[32], ptr[33]));
     m_pointCloudPtr -> m_matrixResult(0, 3) = double(FourHexToFloat(ptr[34], ptr[35], ptr[36], ptr[37]));
 
-    m_pointCloudPtr -> m_matrixResult(1, 0) = double(FourHexToFloat(ptr[42], ptr[43], ptr[44], ptr[45]));
-    m_pointCloudPtr -> m_matrixResult(1, 1) = -double(FourHexToFloat(ptr[38], ptr[39], ptr[40], ptr[41]));
+    m_pointCloudPtr -> m_matrixResult(1, 0) = double(FourHexToFloat(ptr[38], ptr[39], ptr[40], ptr[41]));
+    m_pointCloudPtr -> m_matrixResult(1, 1) = double(FourHexToFloat(ptr[42], ptr[43], ptr[44], ptr[45]));
     m_pointCloudPtr -> m_matrixResult(1, 2) = double(FourHexToFloat(ptr[46], ptr[47], ptr[48], ptr[49]));
     m_pointCloudPtr -> m_matrixResult(1, 3) = double(FourHexToFloat(ptr[50], ptr[51], ptr[52], ptr[53]));
 
-    m_pointCloudPtr -> m_matrixResult(2, 0) = double(FourHexToFloat(ptr[58], ptr[59], ptr[60], ptr[61]));
-    m_pointCloudPtr -> m_matrixResult(2, 1) = -double(FourHexToFloat(ptr[54], ptr[55], ptr[56], ptr[57]));
+    m_pointCloudPtr -> m_matrixResult(2, 0) = double(FourHexToFloat(ptr[54], ptr[55], ptr[56], ptr[57]));
+    m_pointCloudPtr -> m_matrixResult(2, 1) = double(FourHexToFloat(ptr[58], ptr[59], ptr[60], ptr[61]));
     m_pointCloudPtr -> m_matrixResult(2, 2) = double(FourHexToFloat(ptr[62], ptr[63], ptr[64], ptr[65]));
     m_pointCloudPtr -> m_matrixResult(2, 3) = double(FourHexToFloat(ptr[66], ptr[67], ptr[68], ptr[69]));
 
-    m_pointCloudPtr -> m_matrixResult(3, 0) = double(FourHexToFloat(ptr[70], ptr[71], ptr[72], ptr[73]));
-    m_pointCloudPtr -> m_matrixResult(3, 1) = double(FourHexToFloat(ptr[74], ptr[75], ptr[76], ptr[77]));
+    m_pointCloudPtr -> m_matrixResult(3, 0) = double(FourHexToFloat(ptr[74], ptr[75], ptr[76], ptr[77]));
+    m_pointCloudPtr -> m_matrixResult(3, 1) = double(FourHexToFloat(ptr[70], ptr[71], ptr[72], ptr[73]));
     m_pointCloudPtr -> m_matrixResult(3, 2) = double(FourHexToFloat(ptr[78], ptr[79], ptr[80], ptr[81]));
     m_pointCloudPtr -> m_matrixResult(3, 3) = double(FourHexToFloat(ptr[82], ptr[83], ptr[84], ptr[85]));
 
