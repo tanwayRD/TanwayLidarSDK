@@ -56,13 +56,14 @@ void pointCloudCallback(TWPointCloud<PointXYZ>::Ptr pointCloud, bool lostPacket)
 	*Please copy the point cloud data to another thread for use.
 	*Avoid directly operating the UI in the callback function.
 	*/
-	pointCloud->TW_STATUS_CODE |= TW_EXCEPT_CODE;
+	pointCloud->TW_STATUS_CODE = TW_EXCEPT_CODE;
 
 	std::cout << "width:" << pointCloud->width 
 			  << " height:" << pointCloud->height 
 			  << " status:" << pointCloud->TW_STATUS_CODE
 			  << " point cloud size: " << pointCloud->Size() << std::endl;
 	
+	TW_EXCEPT_CODE = 0;
 }
 
 void gpsCallback(std::string gps_value)
