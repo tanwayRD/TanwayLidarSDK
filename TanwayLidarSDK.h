@@ -53,7 +53,7 @@ public:
 	*lidarType: lidar type
 	*decodePackagePtr: new decode processing
 	*/
-	TanwayLidarSDK(std::string lidarIP, std::string localIP, int localPointloudPort, int localDIFPort, TWLidarType lidarType, std::shared_ptr<DecodePackage<PointT>> decodePackagePtr = NULL);
+	TanwayLidarSDK(std::string lidarIP, std::string localIP, int localPointloudPort, int localDIFPort, TWLidarType lidarType, std::shared_ptr<DecodePackage<PointT>> decodePackagePtr = NULL, const std::string& calibfile = "config/parameter.yaml");
 	/*
 	*pcapPath: the pcap file path
 	*lidarType: lidar type
@@ -63,7 +63,7 @@ public:
 	*repeat: Loops through the PCAP files
 	*decodePackagePtr: new decode processing
 	*/
-	TanwayLidarSDK(std::string pcapPath, std::string lidarIPForFilter, int localPointCloudPortForFilter, int localDIFPortForFilter, TWLidarType lidarType, bool repeat, std::shared_ptr<DecodePackage<PointT>> decodePackagePtr = NULL);
+	TanwayLidarSDK(std::string pcapPath, std::string lidarIPForFilter, int localPointCloudPortForFilter, int localDIFPortForFilter, TWLidarType lidarType, bool repeat, std::shared_ptr<DecodePackage<PointT>> decodePackagePtr = NULL, const std::string& calibfile = "config/parameter.yaml");
 
 	~TanwayLidarSDK();
 
@@ -130,13 +130,13 @@ private:
 
 
 template <typename PointT>
-TanwayLidarSDK<PointT>::TanwayLidarSDK(std::string lidarIP, std::string localIP, int localPointloudPort, int localDIFPort, TWLidarType lidarType, std::shared_ptr<DecodePackage<PointT>> decodePackagePtr)
+TanwayLidarSDK<PointT>::TanwayLidarSDK(std::string lidarIP, std::string localIP, int localPointloudPort, int localDIFPort, TWLidarType lidarType, std::shared_ptr<DecodePackage<PointT>> decodePackagePtr, const std::string& calibfile)
 {
 	m_packageCache = std::make_shared<PackageCache>();
 	m_networkReaderPtr = std::make_shared<NetworkReader>(lidarType, lidarIP, localIP, localPointloudPort, localDIFPort, *m_packageCache, &m_mutexE);
 	if (!decodePackagePtr)
 	{
-		m_decodePackagePtr = std::make_shared<DecodePackage<PointT>>(m_packageCache, lidarType, &m_mutexE);
+		m_decodePackagePtr = std::make_shared<DecodePackage<PointT>>(m_packageCache, lidarType, &m_mutexE, calibfile);
 	}
 	else
 	{
@@ -148,13 +148,13 @@ TanwayLidarSDK<PointT>::TanwayLidarSDK(std::string lidarIP, std::string localIP,
 }
 
 template <typename PointT>
-TanwayLidarSDK<PointT>::TanwayLidarSDK(std::string pcapPath, std::string lidarIPForFilter, int localPointCloudPortForFilter, int localDIFPortForFilter, TWLidarType lidarType, bool repeat, std::shared_ptr<DecodePackage<PointT>> decodePackagePtr)
+TanwayLidarSDK<PointT>::TanwayLidarSDK(std::string pcapPath, std::string lidarIPForFilter, int localPointCloudPortForFilter, int localDIFPortForFilter, TWLidarType lidarType, bool repeat, std::shared_ptr<DecodePackage<PointT>> decodePackagePtr, const std::string& calibfile)
 {
 	m_packageCache = std::make_shared<PackageCache>();
 	m_pcapReaderPtr = std::make_shared<PcapReader>(pcapPath, lidarIPForFilter, localPointCloudPortForFilter, localDIFPortForFilter, *m_packageCache, repeat, &m_mutexE);
 	if (!decodePackagePtr)
 	{
-		m_decodePackagePtr = std::make_shared<DecodePackage<PointT>>(m_packageCache, lidarType, &m_mutexE);
+		m_decodePackagePtr = std::make_shared<DecodePackage<PointT>>(m_packageCache, lidarType, &m_mutexE, calibfile);
 	}
 	else
 	{

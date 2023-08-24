@@ -86,7 +86,7 @@ protected:
 	}TWPointData;
 
 public:
-	DecodePackage(std::shared_ptr<PackageCache> packageCachePtr, TWLidarType lidarType, std::mutex* mutex);
+	DecodePackage(std::shared_ptr<PackageCache> packageCachePtr, TWLidarType lidarType, std::mutex* mutex, const std::string& calibfile);
 	DecodePackage();
 	virtual ~DecodePackage();
 
@@ -283,7 +283,7 @@ private:
 	Eigen::Matrix4d m_calibMat;
 	bool m_calibrated = false;
 	bool m_useLocalCalibMat = false;
-
+	std::string m_calibfile;
 public:
 	typename TWPointCloud<PointT>::Ptr m_pointCloudPtr;
 };
@@ -628,8 +628,8 @@ void DecodePackage<PointT>::Stop()
 }
 
 template <typename PointT>
-DecodePackage<PointT>::DecodePackage(std::shared_ptr<PackageCache> packageCachePtr, TWLidarType lidarType, std::mutex* mutex): 
-	m_packageCachePtr(packageCachePtr), m_lidarType(lidarType), m_mutex(mutex)
+DecodePackage<PointT>::DecodePackage(std::shared_ptr<PackageCache> packageCachePtr, TWLidarType lidarType, std::mutex* mutex, const std::string& calibfile): 
+	m_packageCachePtr(packageCachePtr), m_lidarType(lidarType), m_mutex(mutex), m_calibfile(calibfile)
 {
 	InitBasicVariables();
 }
@@ -729,7 +729,7 @@ void DecodePackage<PointT>::InitBasicVariables()
 	m_rotate_duetto_cosR = cos(m_rightMoveAngle * m_calRA);  //
 
 	// load the calibration matrix from config
-	LoadCalibrationResultMatrixFromYaml("config/parameter.yaml");
+	LoadCalibrationResultMatrixFromYaml(m_calibfile);
 }
 
 template <typename PointT>
