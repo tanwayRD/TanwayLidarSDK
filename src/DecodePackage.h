@@ -1873,8 +1873,7 @@ void DecodePackage<PointT>::DecodeDIFData(char* udpData)
 	}
 
 	// Classify and record hardware status code to point cloud frame.
-	if (!m_useLocalCalibMat)
-		ClassifyHWStatusCode(&udpData[384], TW_STATUS_CODE);
+	ClassifyHWStatusCode(&udpData[384], TW_STATUS_CODE);
 
 	// Delivery Calibrate
 	// std::cout << "Process Calibrate." << std::endl;
@@ -2450,12 +2449,14 @@ void DecodePackage<PointT>::ClassifyHWStatusCode(char* rawcode, uint64_t &status
 	if ((*code) & classifier_LIDAR_ERROR_HARDWARE) {
 		status |= (0x01 << 2);
 		USE_EXCEPTION_TIPS(TWException::LIDAR_ERROR_HARDWARE, "LiDAR hardware is in a faulty state!");
+	}
+	if (!m_useLocalCalibMat){
+		if ((*code) & classifier_LIDAR_ERROR_UNCALIBRATED) {
+			status |= (0x01 << 3);
+			USE_EXCEPTION_TIPS(TWException::LIDAR_ERROR_UNCALIBRATED, "Lidar has not been EOL calibrated!");
+		}
+	}
 
-	}
-	if ((*code) & classifier_LIDAR_ERROR_UNCALIBRATED) {
-		status |= (0x01 << 3);
-		USE_EXCEPTION_TIPS(TWException::LIDAR_ERROR_UNCALIBRATED, "Lidar has not been EOL calibrated!");
-	}
 	if ((*code) & classifier_LIDAR_ERROR_SHELTERED) {
 		status |= (0x01 << 4);
 		USE_EXCEPTION_TIPS(TWException::LIDAR_ERROR_SHELTERED, "Lidar is obstructed!");
